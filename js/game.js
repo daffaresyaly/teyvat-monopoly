@@ -33,15 +33,24 @@ class GenshinMonopolyGame {
     this.renderer = new BoardRenderer3D(container);
     this.renderer.init((tileIdx) => this.inspectTile(tileIdx));
 
+    const gnosisPromise =
+      typeof this.renderer.preloadGnosisModels === 'function'
+        ? this.renderer.preloadGnosisModels().then(() => {
+            this.renderer.upgradeGnosisTokens(this.players);
+          })
+        : Promise.resolve();
+
     if (window.assetManager) {
       if (typeof window.assetManager.whenEmblemsReady === 'function') {
         window.assetManager.whenEmblemsReady(() => {
           this.renderer.refreshAllTileTextures(this.tileState, this.players);
+          this.renderer.refreshCenterBoardTexture();
         });
       }
       if (typeof window.assetManager.loadCustomOverrides === 'function') {
         window.assetManager.loadCustomOverrides().then(() => {
           this.renderer.refreshAllTileTextures(this.tileState, this.players);
+          this.renderer.refreshCenterBoardTexture();
         });
       }
     }
@@ -50,9 +59,7 @@ class GenshinMonopolyGame {
     this.bindGlobalUI();
     this.refreshResumeButton();
 
-    if (typeof this.renderer.preloadGnosisModels === 'function') {
-      await this.renderer.preloadGnosisModels();
-    }
+    await gnosisPromise;
   }
 
   refreshResumeButton() {

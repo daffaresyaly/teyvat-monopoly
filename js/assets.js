@@ -121,7 +121,8 @@ class AssetManager {
     ctx.save();
     ctx.translate(cx, cy);
 
-    const customImg = this.customImages[(element || '').toLowerCase()];
+    const key = (element || '').toLowerCase();
+    const customImg = this.customImages[key] || this.emblemImages[key];
     if (customImg && customImg.complete && customImg.naturalWidth > 0) {
       const size = r * 1.85;
       ctx.drawImage(customImg, -size / 2, -size / 2, size, size);
