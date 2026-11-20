@@ -981,34 +981,42 @@ class BoardRenderer3D {
     });
   }
 
-  async loadFbxGnosis(folder, fbxFile, diffuseFile) {
+  // Without diffuseFile, each material keeps its own FBX texture.
+  async loadFbxGnosis(folder, fbxFile, diffuseFile = null, options = {}) {
     if (!THREE.FBXLoader) return null;
     const basePath = `assets/models/Gnosis/${folder}/`;
     const diffuseTex = diffuseFile
       ? await this.loadTextureSafe(`${basePath}${diffuseFile}`, true)
       : null;
+    const { hideMeshPattern = null, roughness = 0.35, metalness = 0.25 } =
+      options;
 
     return new Promise((resolve) => {
       const loader = new THREE.FBXLoader();
       loader.load(
         `${basePath}${fbxFile}`,
         (fbx) => {
+          const toRemove = [];
           fbx.traverse((child) => {
-            if (child.isMesh) {
-              const existingMap =
-                child.material && !Array.isArray(child.material)
-                  ? child.material.map
-                  : null;
-              const mat = new THREE.MeshStandardMaterial({
-                map: diffuseTex || existingMap || null,
+            if (!child.isMesh) return;
+            if (hideMeshPattern && hideMeshPattern.test(child.name)) {
+              toRemove.push(child);
+              return;
+            }
+            // Non-skinned materials: renders bind pose, keeps clone() safe.
+            const convert = (src) =>
+              new THREE.MeshStandardMaterial({
+                map: diffuseTex || (src && src.map) || null,
                 transparent: false,
-                roughness: 0.35,
-                metalness: 0.25,
+                roughness,
+                metalness,
                 side: THREE.DoubleSide,
               });
-              child.material = mat;
-            }
+            child.material = Array.isArray(child.material)
+              ? child.material.map(convert)
+              : convert(child.material);
           });
+          toRemove.forEach((m) => m.parent && m.parent.remove(m));
           resolve(this.normalizeGnosisObject(fbx));
         },
         undefined,
@@ -1051,7 +1059,6 @@ class BoardRenderer3D {
             'Cyro Gnosis',
             'CyroGnosis.fbx',
             'AvatarItem_Gnosis_Cyro_Tex_Diffuse.png',
-            'AvatarItem_Gnosis_Cyro_Tex_Diffuse_A.png',
           ),
       },
       {
@@ -1061,7 +1068,6 @@ class BoardRenderer3D {
             'Dendro Gnosis',
             'DendroGnosis.fbx',
             'Avatarltem_Gnosis_Dendro_Tex_Diffuse.png',
-            'Avatarltem_Gnosis_Dendro_Tex_Diffuse_A.png',
           ),
       },
       {
@@ -1071,7 +1077,6 @@ class BoardRenderer3D {
             'Geo Gnosis',
             'GeoGnosis.fbx',
             'CS_Item_Gnosis_Geo_Diffuse.png',
-            'CS_Item_Gnosis_Geo_Diffuse_A.png',
           ),
       },
       {
@@ -1081,7 +1086,6 @@ class BoardRenderer3D {
             'Hydro Gnosis',
             'HydroGnosis.fbx',
             'AvatarItem_Gnosis_Hydro_Tex_Diffuse.png',
-            'AvatarItem_Gnosis_Hydro_Tex_Diffuse_A.png',
           ),
       },
       {
@@ -1091,8 +1095,14 @@ class BoardRenderer3D {
             'Pyro Gnosis',
             'PyroGnosis.fbx',
             'AvatarItem_Gnosis_Fire_Tex_Diffuse.png',
-            'AvatarItem_Gnosis_Fire_Tex_Diffuse_A.png',
           ),
+      },
+      {
+        id: 'columbina',
+        loader: () =>
+          this.loadFbxGnosis('Luonnotar', 'Luonnotar.fbx', null, {
+            hideMeshPattern: /^Eff_/,
+          }),
       },
     ];
 
@@ -1432,14 +1442,6 @@ class BoardRenderer3D {
     rim.rotation.x = Math.PI / 2;
     rim.position.y = 0.16;
     group.add(rim);
-
-    const emblemMat = new THREE.MeshStandardMaterial({
-      color: primary,
-      emissive: primary,
-      emissiveIntensity: 0.42,
-      metalness: 0.45,
-      roughness: 0.25,
-    });
 
     const template = this.gnosisTemplates[archon.id];
     const gnosisPiece = template
