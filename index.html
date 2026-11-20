@@ -57,10 +57,22 @@
         >
           Cinematic
         </button>
+        <label
+          class="btn-chip cam-select"
+          title="Camera used when AI or other players move (your moves always follow)"
+        >
+          👁️ Others:
+          <select id="spectator-cam">
+            <option value="overview">Overview</option>
+            <option value="follow">Follow</option>
+            <option value="top">Top-Down</option>
+            <option value="cinematic">Cinematic</option>
+          </select>
+        </label>
         <button
           class="btn-chip"
           id="btn-speed"
-          title="Toggle 1x / 2x Animation & AI Speed"
+          title="Cycle 1x / 2x / 0.5x Animation & AI Speed"
         >
           ⚡ 1x
         </button>
@@ -170,6 +182,9 @@
           </button>
           <button id="resume-game-btn" class="btn-secondary btn-large hidden">
             ⏯️ Resume Saved Match
+          </button>
+          <button id="last-match-btn" class="btn-secondary btn-large hidden">
+            📜 Last Match
           </button>
         </div>
       </div>
@@ -326,6 +341,12 @@
             <ul>
               <li><strong>Left-Drag / Wheel:</strong> Orbit camera & zoom</li>
               <li>
+                <strong>Right-Drag / Shift+Drag / WASD / Arrows:</strong> Pan
+                camera
+              </li>
+              <li><strong>Q / E:</strong> Lower / raise camera</li>
+              <li><strong>Overview:</strong> Reset camera to center</li>
+              <li>
                 <strong>Click Any 3D Tile:</strong> Inspect rent, build
                 Outposts/Tavern, or mortgage
               </li>
@@ -405,9 +426,30 @@
         <h1 id="vic-winner">Champion</h1>
         <p id="vic-stats" class="modal-sub"></p>
         <div id="vic-awards" class="awards-grid"></div>
-        <button id="vic-restart" class="btn-primary btn-large">
-          Play New Match
-        </button>
+        <div class="modal-actions">
+          <button id="vic-history" class="btn-secondary btn-large">
+            📜 Match History
+          </button>
+          <button id="vic-main-menu" class="btn-secondary btn-large">
+            🏠 Main Menu
+          </button>
+          <button id="vic-restart" class="btn-primary btn-large">
+            🔁 Rematch
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Last Match History Modal -->
+    <div id="history-modal" class="modal-backdrop hidden">
+      <div class="modal-card wide-card codex-card history-card">
+        <button id="close-history" class="close-x" title="Close">×</button>
+        <div class="modal-eyebrow">TEYVAT CHRONICLE · LAST MATCH</div>
+        <h2 id="hist-title">Match History</h2>
+        <p id="hist-sub" class="modal-sub"></p>
+        <table id="hist-standings" class="hist-standings"></table>
+        <h4>Full Event Log</h4>
+        <div id="hist-log" class="hist-log"></div>
       </div>
     </div>
 
