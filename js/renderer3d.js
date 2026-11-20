@@ -1461,11 +1461,33 @@ class BoardRenderer3D {
     gnosisPiece.position.set(0, 0.68, 0);
     gnosisPiece.userData.isGnosisPiece = true;
     gnosisPiece.userData.baseY = 0.68;
+    gnosisPiece.userData.isFallback = !template;
     group.add(gnosisPiece);
 
     this.scene.add(group);
     this.tokenMeshes[player.id] = group;
     return group;
+  }
+
+  upgradeGnosisTokens(players = []) {
+    players.forEach((player) => {
+      const group = this.tokenMeshes[player.id];
+      const template = this.gnosisTemplates[player.archonId];
+      if (!group || !template) return;
+
+      const oldPiece = group.children.find(
+        (c) => c.userData && c.userData.isGnosisPiece && c.userData.isFallback,
+      );
+      if (!oldPiece) return;
+
+      group.remove(oldPiece);
+      const gnosisPiece = template.clone(true);
+      gnosisPiece.position.set(0, 0.68, 0);
+      gnosisPiece.userData.isGnosisPiece = true;
+      gnosisPiece.userData.baseY = 0.68;
+      gnosisPiece.userData.isFallback = false;
+      group.add(gnosisPiece);
+    });
   }
 
   clearTokens() {
