@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Genshin Monopoly — Chronicles of Mora</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.7.4/umd/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+  </head>
+  <body>
+    <div id="canvas-container"></div>
+
+    <!-- Elemental Reaction Floating Banner -->
+    <div id="reaction-toast" class="reaction-toast hidden"></div>
+
+    <!-- Top HUD: Ley Line Disorder, Serenitea Pot Pool & Controls -->
+    <header id="top-hud">
+      <div class="top-left-stack">
+        <div id="leyline-banner" class="glass-panel">
+          <div class="ll-header">
+            <span class="ll-dot" style="background: #2dd4bf"></span>
+            <span class="ll-title">Round 1 · Ley Line of Abundance</span>
+            <span class="ll-range">Rounds 1–4</span>
+          </div>
+          <div class="ll-desc">
+            Unowned properties cost 10% less to buy, and passing GO pays +250
+            Mora.
+          </div>
+        </div>
+        <div id="pot-pool-badge" class="glass-panel pot-badge hidden">
+          🍵 Serenitea Pot Jackpot: <strong id="pot-pool-amount">0 Mora</strong>
+        </div>
+      </div>
+
+      <div class="top-controls glass-panel">
+        <button
+          class="btn-chip"
+          data-cam="overview"
+          title="Default Isometric View"
+        >
+          Overview
+        </button>
+        <button class="btn-chip" data-cam="follow" title="Follow Active Archon">
+          Follow
+        </button>
+        <button class="btn-chip" data-cam="top" title="Tactical Top-Down">
+          Top-Down
+        </button>
+        <button
+          class="btn-chip"
+          data-cam="cinematic"
+          title="Low Cinematic Angle"
+        >
+          Cinematic
+        </button>
+        <button
+          class="btn-chip"
+          id="btn-speed"
+          title="Toggle 1x / 2x Animation & AI Speed"
+        >
+          ⚡ 1x
+        </button>
+        <button class="btn-chip" id="btn-bgm" title="Toggle Background Music">
+          🎵 BGM
+        </button>
+        <button class="btn-chip" id="btn-sfx" title="Toggle Sound Effects">
+          🔊 SFX
+        </button>
+        <button class="btn-chip" id="btn-rules-help">Codex</button>
+        <button
+          class="btn-chip btn-exit"
+          id="btn-exit-game"
+          title="Exit to Lobby"
+        >
+          🚪 Exit
+        </button>
+      </div>
+    </header>
+
+    <!-- Left HUD: Archon Player Roster -->
+    <aside id="left-hud">
+      <div id="player-roster"></div>
+    </aside>
+
+    <!-- Right HUD: Tile Deed Inspector & Chronicle Log -->
+    <aside id="right-hud">
+      <div id="tile-inspector" class="glass-panel hidden">
+        <button id="close-inspector" class="close-x" title="Close Inspector">
+          ×
+        </button>
+        <div id="inspector-body"></div>
+      </div>
+
+      <div id="log-panel" class="glass-panel">
+        <div class="panel-heading">
+          📜 Teyvat Chronicle ·
+          <span class="hint">Click tile or Archon card</span>
+        </div>
+        <div id="event-log"></div>
+      </div>
+    </aside>
+
+    <!-- Bottom HUD: Turn Action Dock -->
+    <footer id="bottom-hud" class="glass-panel">
+      <div class="turn-status">
+        <span id="turn-banner">Prepare Your Journey</span>
+        <span id="dice-readout" class="dice-pill">🎲 1 + 1 = 2</span>
+        <span id="danger-preview" class="danger-pill hidden"></span>
+      </div>
+      <div class="action-buttons">
+        <button id="btn-bail" class="btn-secondary hidden">
+          Pay Bail (50)
+        </button>
+        <button id="btn-pardon" class="btn-secondary hidden">Use Pardon</button>
+        <button id="btn-roll" class="btn-primary" disabled>🎲 Roll Dice</button>
+        <button id="btn-trade" class="btn-secondary" disabled>🤝 Trade</button>
+        <button id="btn-end-turn" class="btn-secondary" disabled>
+          End Turn ➔
+        </button>
+      </div>
+    </footer>
+
+    <!-- Pre-Game Lobby Modal -->
+    <div id="lobby-modal" class="modal-backdrop">
+      <div class="modal-card lobby-card">
+        <div class="modal-eyebrow">TEYVAT BOARD GAME · 3D EDITION</div>
+        <h1>Genshin Monopoly: Chronicles of Mora</h1>
+        <p class="modal-sub">
+          8 Nations · 24 Properties · 8 Archon Passives · 12 Elemental
+          Resonances · 6 Rotating Ley Lines
+        </p>
+
+        <div class="lobby-options">
+          <label>
+            Players:
+            <select id="player-count">
+              <option value="2">2 Archons</option>
+              <option value="3">3 Archons</option>
+              <option value="4" selected>4 Archons</option>
+            </select>
+          </label>
+          <label>
+            Victory Rule:
+            <select id="game-mode-select">
+              <option value="elimination" selected>Last Archon Standing</option>
+              <option value="sprint20">
+                20-Round Celestia Sprint (Net Worth)
+              </option>
+            </select>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="fast-draft-toggle" checked />
+            Fast Draft (2 starting deeds)
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="pot-pool-toggle" checked />
+            Serenitea Pot Tax Jackpot
+          </label>
+        </div>
+
+        <div id="player-slots" class="slots-grid"></div>
+
+        <div class="lobby-cta-row">
+          <button id="start-game-btn" class="btn-primary btn-large">
+            ✨ Begin Journey Across Teyvat
+          </button>
+          <button id="resume-game-btn" class="btn-secondary btn-large hidden">
+            ⏯️ Resume Saved Match
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Property Purchase Modal -->
+    <div id="purchase-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div id="purch-badge" class="deed-banner">Region</div>
+        <h2 id="purch-title">Property Name</h2>
+        <div id="purch-price" class="big-price">200 Mora</div>
+        <p id="purch-rent-info" class="modal-sub"></p>
+        <div class="modal-actions">
+          <button id="purch-buy-btn" class="btn-primary">Buy Deed</button>
+          <button id="purch-auction-btn" class="btn-secondary">
+            Send to Auction
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auction Modal -->
+    <div id="auction-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-eyebrow">NORTHLAND AUCTION HOUSE</div>
+        <h2 id="auction-tile-name">Property</h2>
+        <div id="auction-current-bid" class="big-price">Starting Bid</div>
+        <p id="auction-turn-label" class="modal-sub"></p>
+        <div id="auction-controls" class="modal-actions"></div>
+      </div>
+    </div>
+
+    <!-- Event Wish / Daily Commission Reveal Modal -->
+    <div id="card-modal" class="modal-backdrop hidden">
+      <div id="card-modal-box" class="modal-card">
+        <div id="card-deck-tag" class="modal-eyebrow">EVENT WISH · ★★★★★</div>
+        <h2 id="card-title">Card Title</h2>
+        <p id="card-flavor" class="card-flavor">"Flavor text"</p>
+        <div id="card-effect" class="card-effect-box">Effect</div>
+        <button id="card-ok-btn" class="btn-primary">Claim Fate</button>
+      </div>
+    </div>
+
+    <!-- Nahida Passive Modal (Pick 1 of 2 Cards) -->
+    <div id="nahida-modal" class="modal-backdrop hidden">
+      <div class="modal-card wide-card">
+        <div class="modal-eyebrow">🌱 ALL SCHEMES TO KNOW · NAHIDA PASSIVE</div>
+        <h2 id="nahida-deck-label">Choose 1 Fate to Keep</h2>
+        <div id="nahida-choices" class="nahida-grid"></div>
+      </div>
+    </div>
+
+    <!-- Generic Choice Modal -->
+    <div id="choice-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <h2 id="choice-title">Choose Action</h2>
+        <p id="choice-body" class="modal-sub"></p>
+        <div id="choice-buttons" class="modal-actions"></div>
+      </div>
+    </div>
+
+    <!-- Trade Modal -->
+    <div id="trade-modal" class="modal-backdrop hidden">
+      <div class="modal-card wide-card">
+        <div class="modal-eyebrow">TEYVAT DIPLOMACY</div>
+        <h2>Propose Trade</h2>
+        <div class="trade-partner-row">
+          Trade With:
+          <select id="trade-partner"></select>
+        </div>
+        <div class="trade-columns">
+          <div class="trade-col">
+            <h4>Your Offer</h4>
+            <label
+              >Mora:
+              <input
+                type="number"
+                id="trade-my-mora"
+                min="0"
+                step="10"
+                value="0"
+            /></label>
+            <label id="trade-my-pardon-wrap" class="hidden pardon-row"
+              >Official Pardons:
+              <input
+                type="number"
+                id="trade-my-pardons"
+                min="0"
+                step="1"
+                value="0"
+            /></label>
+            <div id="trade-my-props" class="trade-prop-list"></div>
+          </div>
+          <div class="trade-col">
+            <h4>Their Offer</h4>
+            <label
+              >Mora:
+              <input
+                type="number"
+                id="trade-their-mora"
+                min="0"
+                step="10"
+                value="0"
+            /></label>
+            <label id="trade-their-pardon-wrap" class="hidden pardon-row"
+              >Official Pardons:
+              <input
+                type="number"
+                id="trade-their-pardons"
+                min="0"
+                step="1"
+                value="0"
+            /></label>
+            <div id="trade-their-props" class="trade-prop-list"></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="trade-submit" class="btn-primary">Propose Deal</button>
+          <button id="trade-cancel" class="btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Archon Portfolio Modal -->
+    <div id="portfolio-modal" class="modal-backdrop hidden">
+      <div class="modal-card wide-card">
+        <button id="close-portfolio" class="close-x">×</button>
+        <div class="modal-eyebrow">ARCHON TREASURY & DEEDS</div>
+        <h2 id="port-title">Archon Portfolio</h2>
+        <p id="port-sub" class="modal-sub"></p>
+        <div id="port-body" class="portfolio-grid"></div>
+      </div>
+    </div>
+
+    <!-- Debt Liquidation Modal -->
+    <div id="liquidation-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-eyebrow">TREASURY SHORTFALL</div>
+        <h2 id="liq-header">Raise Mora to Settle Debt</h2>
+        <div id="liq-list" class="liq-list"></div>
+        <button id="liq-done-btn" class="btn-primary">Confirm Treasury</button>
+      </div>
+    </div>
+
+    <!-- Codex / Rules Reference Modal -->
+    <div id="rules-modal" class="modal-backdrop hidden">
+      <div class="modal-card wide-card codex-card">
+        <button id="close-rules" class="close-x">×</button>
+        <div class="modal-eyebrow">TEYVAT ADVENTURER'S HANDBOOK</div>
+        <h2>Elemental Resonances & Shortcuts</h2>
+        <div class="codex-grid">
+          <div>
+            <h4>3D Controls & Shortcuts</h4>
+            <ul>
+              <li><strong>Left-Drag / Wheel:</strong> Orbit camera & zoom</li>
+              <li>
+                <strong>Click Any 3D Tile:</strong> Inspect rent, build
+                Outposts/Tavern, or mortgage
+              </li>
+              <li>
+                <strong>Click Any Archon Card:</strong> View full deed portfolio
+                & net worth
+              </li>
+              <li><strong>Spacebar:</strong> Roll Dice / End Turn</li>
+              <li>
+                <strong>Escape:</strong> Close Inspector / Codex / Portfolio
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4>12 Elemental Resonances (Require 3/3 in Both Regions)</h4>
+            <ul class="res-codex-list">
+              <li>
+                <strong>Vaporize (Natlan + Fontaine):</strong> +20% rent on
+                Natlan & Fontaine
+              </li>
+              <li>
+                <strong>Melt (Natlan + Snezhnaya):</strong> +25% rent on Natlan
+                & Snezhnaya
+              </li>
+              <li>
+                <strong>Overloaded (Natlan + Inazuma):</strong> +50 Mora blast
+                penalty on opponents
+              </li>
+              <li>
+                <strong>Burning (Natlan + Sumeru):</strong> Opponents forfeit
+                next GO payout
+              </li>
+              <li>
+                <strong>Frozen (Fontaine + Snezhnaya):</strong> Opponents skip
+                next roll (or pay 50 Mora)
+              </li>
+              <li>
+                <strong>Electro-Charged (Fontaine + Inazuma):</strong> 25 Mora
+                splash damage to all other players
+              </li>
+              <li>
+                <strong>Bloom (Fontaine + Sumeru):</strong> +50 Mora build
+                rebate from Bank
+              </li>
+              <li>
+                <strong>Quicken (Inazuma + Sumeru):</strong> -25 Mora build cost
+                in Inazuma & Sumeru
+              </li>
+              <li>
+                <strong>Superconduct (Snezhnaya + Inazuma):</strong> Opponents
+                cannot mortgage to pay rent
+              </li>
+              <li>
+                <strong>Swirl (Mondstadt + Any Full Set):</strong> Pushes
+                Mondstadt visitors forward 2 tiles
+              </li>
+              <li>
+                <strong>Crystallize (Liyue + Any Full Set):</strong> -50% Bank
+                taxes & card fines
+              </li>
+              <li>
+                <strong
+                  >Lunar Surge (Nod-Krai + Fontaine/Inazuma/Snezhnaya):</strong
+                >
+                +100 Mora flat rent on Nod-Krai & 2x Utility multiplier
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="victory-modal" class="modal-backdrop hidden">
+      <div class="modal-card wide-card">
+        <div class="modal-eyebrow">CELESTIA ASCENSION</div>
+        <h1 id="vic-winner">Champion</h1>
+        <p id="vic-stats" class="modal-sub"></p>
+        <div id="vic-awards" class="awards-grid"></div>
+        <button id="vic-restart" class="btn-primary btn-large">
+          Play New Match
+        </button>
+      </div>
+    </div>
+
+    <script src="js/data.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/assets.js"></script>
+    <script src="js/renderer3d.js"></script>
+    <script src="js/game.js"></script>
+  </body>
+</html>

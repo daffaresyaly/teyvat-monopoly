@@ -1,0 +1,13 @@
+{
+  "description": "Optional custom PNG/JPG overrides. Drop your images into assets/custom/ and map filenames below.",
+  "overrides": {
+    "venti": "",
+    "zhongli": "",
+    "raiden": "",
+    "nahida": "",
+    "furina": "",
+    "mavuika": "",
+    "tsaritsa": "",
+    "columbina": ""
+  }
+}
