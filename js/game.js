@@ -37,11 +37,13 @@ class GenshinMonopolyGame {
       if (typeof window.assetManager.whenEmblemsReady === 'function') {
         window.assetManager.whenEmblemsReady(() => {
           this.renderer.refreshAllTileTextures(this.tileState, this.players);
+          this.renderer.refreshCenterBoardTexture();
         });
       }
       if (typeof window.assetManager.loadCustomOverrides === 'function') {
         window.assetManager.loadCustomOverrides().then(() => {
           this.renderer.refreshAllTileTextures(this.tileState, this.players);
+          this.renderer.refreshCenterBoardTexture();
         });
       }
     }

@@ -252,6 +252,7 @@ class BoardRenderer3D {
     centerMesh.position.y = 0.01;
     centerMesh.receiveShadow = true;
     this.scene.add(centerMesh);
+    this.centerMesh = centerMesh;
 
     // Build all 40 Tiles
     BOARD_TILES.forEach((tile) => {
@@ -375,6 +376,16 @@ class BoardRenderer3D {
         Boolean(st && st.mortgaged),
       );
     });
+  }
+
+  refreshCenterBoardTexture() {
+    if (!this.centerMesh || !this.centerMesh.material) return;
+    const newTex = window.assetManager.createCenterBoardTexture();
+    if (this.centerMesh.material.map) {
+      this.centerMesh.material.map.dispose();
+    }
+    this.centerMesh.material.map = newTex;
+    this.centerMesh.material.needsUpdate = true;
   }
 
   updateTileBuildings(tileIndex, level) {
