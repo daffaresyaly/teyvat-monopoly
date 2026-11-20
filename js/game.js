@@ -366,7 +366,7 @@ class GenshinMonopolyGame {
       return {
         ...cfg,
         color: archon.color,
-        mora: 1500,
+        mora: STARTING_MORA,
         position: 0,
         inJail: false,
         jailTurns: 0,
@@ -399,7 +399,7 @@ class GenshinMonopolyGame {
 
     document.getElementById('event-log').innerHTML = '';
     this.log(
-      `✨ Welcome to Teyvat (${this.gameMode === 'sprint20' ? '20-Round Celestia Sprint' : 'Last Archon Standing'})! Every Archon starts with 1,500 Mora.`,
+      `✨ Welcome to Teyvat (${this.gameMode === 'sprint20' ? '20-Round Celestia Sprint' : 'Last Archon Standing'})! Every Archon starts with ${STARTING_MORA.toLocaleString('en-US')} Mora.`,
     );
 
     if (fastDraft) {
@@ -764,8 +764,7 @@ class GenshinMonopolyGame {
             true,
           );
           if (player.bankrupt) {
-            this.isAnimating = false;
-            this.endTurn();
+            this.passTurnAfterBankruptcy(player);
             return;
           }
           player.inJail = false;
@@ -843,6 +842,11 @@ class GenshinMonopolyGame {
     await this.movePlayerSteps(player, sum, true);
     await this.resolveTileLanding(player, sum);
 
+    if (player.bankrupt) {
+      this.passTurnAfterBankruptcy(player);
+      return;
+    }
+
     if (
       isDoubles &&
       !player.inJail &&
@@ -859,6 +863,18 @@ class GenshinMonopolyGame {
     this.isAnimating = false;
     this.saveMatchState();
     this.updateHUD();
+  }
+
+  // A bankrupt player can't end their own turn, so pass it on directly.
+  passTurnAfterBankruptcy(player) {
+    this.isAnimating = false;
+    this.hasRolled = true;
+    if (this.gameOver) {
+      this.updateHUD();
+      return;
+    }
+    this.log(`⏭️ ${player.name}'s turn ends after bankruptcy.`);
+    this.advanceToNextPlayer();
   }
 
   chooseAINudge(player, sum) {
@@ -2229,7 +2245,7 @@ class GenshinMonopolyGame {
         tile.type === 'property'
           ? `Base Rent: <strong>${tile.rents[0]}</strong> · Full Set: <strong>${tile.rents[1]}</strong> · Grand Tavern: <strong>${tile.rents[6]}</strong>`
           : tile.description ||
-            'Expedition Realm Transit Hub (25 / 50 / 100 / 200 Mora)';
+            `Expedition Realm Transit Hub (${tile.rents.join(' / ')} Mora)`;
 
       const buyBtn = document.getElementById('purch-buy-btn');
       buyBtn.disabled = !canAfford;
@@ -2486,7 +2502,7 @@ class GenshinMonopolyGame {
         <div class="deed-owner">Owner: <strong>${owner ? owner.name : 'Unowned'}</strong></div>
         <p class="deed-desc">${
           tile.type === 'railroad'
-            ? 'Rent scales by Expedition Realms owned: 1 → 25 · 2 → 50 · 3 → 100 · All 4 → 200 Mora.'
+            ? `Rent scales by Expedition Realms owned: ${tile.rents.map((r, i) => `${i === 3 ? 'All 4' : i + 1} → ${r}`).join(' · ')} Mora.`
             : tile.description
         }</p>
         <div class="deed-meta">Price: ${tile.price} · Mortgage: ${tile.mortgage}</div>

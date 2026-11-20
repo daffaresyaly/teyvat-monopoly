@@ -1,6 +1,8 @@
 // js/data.js
 // Complete Game Data for 3D Genshin Monopoly (40 Tiles, 8 Regions, 8 Archons, 12 Resonances, 6 Ley Lines, 32 Cards)
 
+const STARTING_MORA = 1500;
+
 const REGIONS = {
   mondstadt: {
     id: 'mondstadt',
