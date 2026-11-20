@@ -2,6 +2,13 @@
 // Complete Game State, Rules Engine, Elemental Resonances, Ley Lines, Trading, Auctions, Save/Load, AI & UI Controller
 
 const SAVE_STORAGE_KEY = 'genshin_monopoly_save_v1';
+const SPECTATOR_CAM_KEY = 'genshin_monopoly_spectator_cam';
+const LAST_MATCH_KEY = 'genshin_monopoly_last_match';
+const MATCH_LOG_LIMIT = 5000;
+// Global animation pace; the 1x/2x toggle multiplies this.
+const ANIMATION_SPEED_BASE = 0.65;
+const SPEED_SETTINGS = [1, 2, 0.5];
+const CAMERA_MODES = ['overview', 'follow', 'top', 'cinematic'];
 
 class GenshinMonopolyGame {
   constructor() {
@@ -21,16 +28,23 @@ class GenshinMonopolyGame {
     this.gameMode = 'elimination'; // 'elimination' | 'sprint20'
     this.potPoolEnabled = true;
     this.potPool = 0;
-    this.speedMultiplier = 1;
+    this.speedSetting = 1;
+    this.speedMultiplier = ANIMATION_SPEED_BASE;
+    const savedCam = localStorage.getItem(SPECTATOR_CAM_KEY);
+    this.spectatorCamMode = CAMERA_MODES.includes(savedCam)
+      ? savedCam
+      : 'overview';
 
     this.chanceDeck = [];
     this.chestDeck = [];
     this.selectedTileIndex = null;
+    this.matchLog = [];
   }
 
   async init() {
     const container = document.getElementById('canvas-container');
     this.renderer = new BoardRenderer3D(container);
+    this.renderer.speedMultiplier = this.speedMultiplier;
     this.renderer.init((tileIdx) => this.inspectTile(tileIdx));
 
     const gnosisPromise =
@@ -58,6 +72,7 @@ class GenshinMonopolyGame {
     this.setupLobbyUI();
     this.bindGlobalUI();
     this.refreshResumeButton();
+    this.refreshLastMatchButton();
 
     await gnosisPromise;
   }
@@ -66,6 +81,19 @@ class GenshinMonopolyGame {
     const btn = document.getElementById('resume-game-btn');
     if (!btn) return;
     btn.classList.toggle('hidden', !localStorage.getItem(SAVE_STORAGE_KEY));
+  }
+
+  refreshLastMatchButton() {
+    const btn = document.getElementById('last-match-btn');
+    if (btn) btn.classList.toggle('hidden', !this.loadLastMatch());
+  }
+
+  loadLastMatch() {
+    try {
+      return JSON.parse(localStorage.getItem(LAST_MATCH_KEY));
+    } catch (_) {
+      return null;
+    }
   }
 
   setupLobbyUI() {
@@ -185,9 +213,11 @@ class GenshinMonopolyGame {
       .addEventListener('click', () => this.useJailCard());
 
     document.getElementById('btn-speed').addEventListener('click', (e) => {
-      this.speedMultiplier = this.speedMultiplier === 1 ? 2 : 1;
+      const next = (SPEED_SETTINGS.indexOf(this.speedSetting) + 1) % SPEED_SETTINGS.length;
+      this.speedSetting = SPEED_SETTINGS[next];
+      this.speedMultiplier = ANIMATION_SPEED_BASE * this.speedSetting;
       this.renderer.speedMultiplier = this.speedMultiplier;
-      e.currentTarget.textContent = `⚡ ${this.speedMultiplier}x`;
+      e.currentTarget.textContent = `⚡ ${this.speedSetting}x`;
     });
 
     document.getElementById('btn-bgm').addEventListener('click', (e) => {
@@ -213,6 +243,14 @@ class GenshinMonopolyGame {
       this.exitToLobby();
     });
 
+    const spectatorSelect = document.getElementById('spectator-cam');
+    spectatorSelect.value = this.spectatorCamMode;
+    spectatorSelect.addEventListener('change', (e) => {
+      this.spectatorCamMode = e.target.value;
+      localStorage.setItem(SPECTATOR_CAM_KEY, this.spectatorCamMode);
+      e.target.blur();
+    });
+
     document.querySelectorAll('[data-cam]').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.renderer.setCameraPreset(btn.dataset.cam, this.getCurrentPlayer());
@@ -233,6 +271,15 @@ class GenshinMonopolyGame {
     document.getElementById('close-portfolio').addEventListener('click', () => {
       document.getElementById('portfolio-modal').classList.add('hidden');
     });
+    document
+      .getElementById('last-match-btn')
+      .addEventListener('click', () => this.showHistoryModal());
+    document
+      .getElementById('vic-history')
+      .addEventListener('click', () => this.showHistoryModal());
+    document.getElementById('close-history').addEventListener('click', () => {
+      document.getElementById('history-modal').classList.add('hidden');
+    });
 
     // Keyboard shortcuts: Space (Roll / End Turn) & Escape (Close non-blocking modals)
     window.addEventListener('keydown', (e) => {
@@ -245,6 +292,7 @@ class GenshinMonopolyGame {
         document.getElementById('rules-modal').classList.add('hidden');
         document.getElementById('portfolio-modal').classList.add('hidden');
         document.getElementById('trade-modal').classList.add('hidden');
+        document.getElementById('history-modal').classList.add('hidden');
       } else if (e.code === 'Space') {
         const anyBlockingModal = [
           ...document.querySelectorAll('.modal-backdrop'),
@@ -269,6 +317,7 @@ class GenshinMonopolyGame {
     document.getElementById('tile-inspector').classList.add('hidden');
     document.getElementById('lobby-modal').classList.remove('hidden');
     this.refreshResumeButton();
+    this.refreshLastMatchButton();
   }
 
   saveMatchState() {
@@ -283,6 +332,7 @@ class GenshinMonopolyGame {
         potPoolEnabled: this.potPoolEnabled,
         potPool: this.potPool,
         lastDice: this.lastDice,
+        matchLog: this.matchLog,
       };
       localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
     } catch (_) {}
@@ -333,6 +383,8 @@ class GenshinMonopolyGame {
 
       document.getElementById('lobby-modal').classList.add('hidden');
       document.getElementById('event-log').innerHTML = '';
+      this.matchLog = Array.isArray(data.matchLog) ? data.matchLog : [];
+      this.matchLog.slice(-50).forEach((e) => this.renderLogEntry(e.text));
       this.log(`⏯️ Resumed saved match on Round ${this.roundNumber}!`);
       this.startTurn();
     } catch (_) {
@@ -405,6 +457,7 @@ class GenshinMonopolyGame {
     this.gameOver = false;
 
     document.getElementById('event-log').innerHTML = '';
+    this.matchLog = [];
     this.log(
       `✨ Welcome to Teyvat (${this.gameMode === 'sprint20' ? '20-Round Celestia Sprint' : 'Last Archon Standing'})! Every Archon starts with ${STARTING_MORA.toLocaleString('en-US')} Mora.`,
     );
@@ -503,7 +556,10 @@ class GenshinMonopolyGame {
     toast.style.borderColor = color1;
     toast.classList.remove('hidden');
     clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => toast.classList.add('hidden'), 2400);
+    this._toastTimer = setTimeout(
+      () => toast.classList.add('hidden'),
+      2400 / this.speedMultiplier,
+    );
   }
 
   addToPotPool(amount, reason = '') {
@@ -539,6 +595,12 @@ class GenshinMonopolyGame {
   }
 
   log(msg) {
+    this.matchLog.push({ round: this.roundNumber, text: msg });
+    if (this.matchLog.length > MATCH_LOG_LIMIT) this.matchLog.shift();
+    this.renderLogEntry(msg);
+  }
+
+  renderLogEntry(msg) {
     const logEl = document.getElementById('event-log');
     const item = document.createElement('div');
     item.className = 'log-entry';
@@ -903,9 +965,21 @@ class GenshinMonopolyGame {
     return 0;
   }
 
+  // "You" = first human player.
+  isLocalPlayer(player) {
+    const firstHuman = this.players.find((p) => !p.isAI);
+    return Boolean(firstHuman && firstHuman.id === player.id);
+  }
+
+  applyMoveCamera(player) {
+    const mode = this.isLocalPlayer(player) ? 'follow' : this.spectatorCamMode;
+    this.renderer.setCameraPreset(mode, player);
+  }
+
   async movePlayerSteps(player, steps, checkGo = true) {
     const direction = steps >= 0 ? 1 : -1;
     const count = Math.abs(steps);
+    if (count > 0) this.applyMoveCamera(player);
 
     for (let s = 0; s < count; s++) {
       const nextPos = (player.position + direction + 40) % 40;
@@ -1573,6 +1647,7 @@ class GenshinMonopolyGame {
 
   declareBankruptcy(player, creditor) {
     player.bankrupt = true;
+    player.eliminatedRound = this.roundNumber;
     this.log(`💀 BANKRUPTCY! ${player.name} has been eliminated from Teyvat!`);
     if (this.renderer.tokenMeshes[player.id]) {
       this.renderer.scene.remove(this.renderer.tokenMeshes[player.id]);
@@ -1607,7 +1682,114 @@ class GenshinMonopolyGame {
     this.log(
       `👑 VICTORY! ${winner ? winner.name : 'An Archon'} rules all of Teyvat!`,
     );
+    this.saveLastMatch(winner);
     this.showVictoryModal(winner);
+  }
+
+  saveLastMatch(winner) {
+    const standings = this.players
+      .map((p) => ({
+        name: p.name,
+        archonId: p.archonId,
+        isAI: p.isAI,
+        bankrupt: p.bankrupt,
+        eliminatedRound: p.eliminatedRound || null,
+        mora: p.mora,
+        netWorth: this.calculateNetWorth(p),
+        deeds: Object.values(this.tileState).filter((s) => s.ownerId === p.id)
+          .length,
+        stats: p.stats,
+        isWinner: Boolean(winner && winner.id === p.id),
+      }))
+      .sort(
+        (a, b) =>
+          b.isWinner - a.isWinner ||
+          a.bankrupt - b.bankrupt ||
+          b.netWorth - a.netWorth ||
+          (b.eliminatedRound || 0) - (a.eliminatedRound || 0),
+      );
+
+    const record = {
+      endedAt: new Date().toISOString(),
+      gameMode: this.gameMode,
+      rounds:
+        this.gameMode === 'sprint20'
+          ? Math.min(this.roundNumber, 20)
+          : this.roundNumber,
+      winnerName: winner ? winner.name : null,
+      standings,
+      log: this.matchLog,
+    };
+    try {
+      localStorage.setItem(LAST_MATCH_KEY, JSON.stringify(record));
+    } catch (_) {
+      // Storage full: keep newer half of the log.
+      record.log = this.matchLog.slice(-Math.floor(this.matchLog.length / 2));
+      try {
+        localStorage.setItem(LAST_MATCH_KEY, JSON.stringify(record));
+      } catch (__) {}
+    }
+    this.refreshLastMatchButton();
+  }
+
+  showHistoryModal() {
+    const rec = this.loadLastMatch();
+    if (!rec) return;
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined) n.textContent = text;
+      return n;
+    };
+
+    const modeLabel =
+      rec.gameMode === 'sprint20'
+        ? '20-Round Celestia Sprint'
+        : 'Last Archon Standing';
+    document.getElementById('hist-title').textContent = rec.winnerName
+      ? `👑 ${rec.winnerName} Won`
+      : 'Match History';
+    document.getElementById('hist-sub').textContent =
+      `${modeLabel} · ${rec.rounds} rounds · Ended ${new Date(rec.endedAt).toLocaleString()}`;
+
+    const table = document.getElementById('hist-standings');
+    table.innerHTML = '';
+    const head = el('tr');
+    ['#', 'Player', 'Archon', 'Result', 'Net Worth', 'Deeds', 'Rent Earned', 'Builds']
+      .forEach((h) => head.appendChild(el('th', null, h)));
+    table.appendChild(head);
+    rec.standings.forEach((p, i) => {
+      const archon = ARCHONS.find((a) => a.id === p.archonId);
+      const row = el('tr', p.isWinner ? 'winner' : p.bankrupt ? 'out' : '');
+      [
+        i + 1,
+        `${p.name}${p.isAI ? ' 🤖' : ''}`,
+        archon ? archon.name : p.archonId,
+        p.isWinner
+          ? 'Winner'
+          : p.bankrupt
+            ? `Bankrupt (R${p.eliminatedRound || '?'})`
+            : 'Survived',
+        p.bankrupt ? '—' : `${p.netWorth} Mora`,
+        p.deeds,
+        p.stats?.rentEarned ?? 0,
+        p.stats?.buildsCount ?? 0,
+      ].forEach((v) => row.appendChild(el('td', null, String(v))));
+      table.appendChild(row);
+    });
+
+    const logEl = document.getElementById('hist-log');
+    logEl.innerHTML = '';
+    let lastRound = null;
+    (rec.log || []).forEach((entry) => {
+      if (entry.round !== lastRound) {
+        lastRound = entry.round;
+        logEl.appendChild(el('div', 'hist-round', `Round ${entry.round}`));
+      }
+      logEl.appendChild(el('div', 'log-entry', entry.text));
+    });
+
+    document.getElementById('history-modal').classList.remove('hidden');
   }
 
   // --- BUILDING, MORTGAGE & DEED MANAGEMENT ---
@@ -2426,9 +2608,12 @@ class GenshinMonopolyGame {
       <div class="award-card"><strong>⛓️ Meropide Regular</strong>${byJail ? `${byJail.name} (${byJail.stats?.jailCount || 0} detentions)` : '—'}</div>
     `;
 
+    document.getElementById('vic-main-menu').onclick = () => this.exitToLobby();
     document.getElementById('vic-restart').onclick = () => {
-      modal.classList.add('hidden');
-      document.getElementById('lobby-modal').classList.remove('hidden');
+      document
+        .querySelectorAll('.modal-backdrop')
+        .forEach((m) => m.classList.add('hidden'));
+      document.getElementById('start-game-btn').click();
     };
     modal.classList.remove('hidden');
   }

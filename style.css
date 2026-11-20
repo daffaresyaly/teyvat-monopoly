@@ -123,6 +123,20 @@ body {
   background: rgba(212, 175, 55, 0.25);
   border-color: var(--gold);
 }
+.cam-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cam-select select {
+  background: #0f172a;
+  color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  padding: 1px 4px;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
 
 /* Left HUD: Player Roster */
 #left-hud {
@@ -874,6 +888,53 @@ button:disabled {
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 0.8rem;
+}
+
+.history-card h4 {
+  color: var(--gold);
+  margin: 16px 0 8px;
+}
+
+.hist-standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.hist-standings th,
+.hist-standings td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+  text-align: left;
+}
+.hist-standings th {
+  color: var(--gold);
+  font-weight: 600;
+}
+.hist-standings tr.winner td {
+  color: #fde68a;
+  font-weight: 700;
+}
+.hist-standings tr.out td {
+  color: #94a3b8;
+}
+
+.hist-log {
+  max-height: 42vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.77rem;
+  line-height: 1.35;
+}
+.hist-round {
+  position: sticky;
+  top: 0;
+  background: #111827;
+  color: var(--gold);
+  font-weight: 700;
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.3);
 }
 
 .awards-grid {

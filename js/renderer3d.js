@@ -1,6 +1,52 @@
 // js/renderer3d.js
 // Complete Three.js 3D Engine: Teyvat Board, Procedural Tokens, Outposts & Grand Taverns, 3D Dice, Particles, Camera Controller
 
+// Orbit-target bounds (world units).
+const CAMERA_LIMITS = {
+  x: [-9.5, 9.5],
+  y: [0, 4],
+  z: [-9.5, 9.5],
+  distance: [7, 34],
+  polar: [0.14, 1.28],
+};
+
+const CAMERA_PAN_KEYS = {
+  KeyW: [0, 1, 0],
+  ArrowUp: [0, 1, 0],
+  KeyS: [0, -1, 0],
+  ArrowDown: [0, -1, 0],
+  KeyA: [-1, 0, 0],
+  ArrowLeft: [-1, 0, 0],
+  KeyD: [1, 0, 0],
+  ArrowRight: [1, 0, 0],
+  KeyE: [0, 0, 1],
+  KeyQ: [0, 0, -1],
+};
+
+// Sector = 5 tiles before a corner, the corner, 4 after.
+const CORNER_POSITIONS = [
+  [8.04, 8.04],
+  [-8.04, 8.04],
+  [-8.04, -8.04],
+  [8.04, -8.04],
+];
+
+function getEdgeSector(tileIndex) {
+  return Math.floor((((tileIndex + 5) % 40) + 40) % 40 / 10);
+}
+
+function getSectorAzimuth(sector) {
+  return Math.PI / 4 - sector * (Math.PI / 2);
+}
+
+function getSideIndex(tileIndex) {
+  return Math.floor((((tileIndex % 40) + 40) % 40) / 10);
+}
+
+function getSideAzimuth(side) {
+  return -side * (Math.PI / 2);
+}
+
 class BoardRenderer3D {
   constructor(container) {
     this.container = container;
@@ -24,22 +70,29 @@ class BoardRenderer3D {
     this.camState = {
       target: new THREE.Vector3(0, 0, 0),
       desiredTarget: new THREE.Vector3(0, 0, 0),
-      azimuth: 0,
-      desiredAzimuth: 0,
-      polar: 0.88,
-      desiredPolar: 0.88,
-      distance: 23.5,
-      desiredDistance: 23.5,
+      azimuth: getSectorAzimuth(0),
+      desiredAzimuth: getSectorAzimuth(0),
+      polar: 0.82,
+      desiredPolar: 0.82,
+      distance: 32,
+      desiredDistance: 32,
       isDragging: false,
+      dragMode: 'orbit',
       lastX: 0,
       lastY: 0,
+      dragDistance: 0,
       dragMoved: false,
     };
+    this.panKeys = new Set();
 
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     this.onTileClick = null;
     this.followPlayerId = null;
+    this.tokenTiles = {};
+    this.cameraPreset = null;
+    this.cameraSubjectId = null;
+    this.cameraSector = null;
 
     this.clock = new THREE.Clock();
 
@@ -54,7 +107,7 @@ class BoardRenderer3D {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x070a12);
-    this.scene.fog = new THREE.FogExp2(0x070a12, 0.015);
+    this.scene.fog = new THREE.FogExp2(0x070a12, 0.011);
 
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;
@@ -1509,6 +1562,7 @@ class BoardRenderer3D {
     const mesh = this.tokenMeshes[player.id];
     const layout = this.tileMeta[player.position];
     if (!mesh || !layout) return;
+    this.tokenTiles[player.id] = player.position;
 
     const idx = Math.max(
       0,
@@ -1528,6 +1582,7 @@ class BoardRenderer3D {
       const mesh = this.tokenMeshes[player.id];
       const layout = this.tileMeta[targetTileIndex];
       if (!mesh || !layout) return resolve();
+      this.tokenTiles[player.id] = targetTileIndex;
 
       const off = this.getTokenSlotOffset(slotIndex);
       const cos = Math.cos(layout.rotY);
@@ -1588,27 +1643,56 @@ class BoardRenderer3D {
   }
 
   setCameraPreset(preset, activePlayer = null) {
-    this.followPlayerId = null;
-    if (preset === 'overview') {
-      this.camState.desiredTarget.set(0, 0, 0);
-      this.camState.desiredAzimuth = 0;
-      this.camState.desiredPolar = 0.86;
-      this.camState.desiredDistance = 23.5;
-    } else if (preset === 'top') {
-      this.camState.desiredTarget.set(0, 0, 0);
-      this.camState.desiredAzimuth = 0;
-      this.camState.desiredPolar = 0.14;
-      this.camState.desiredDistance = 25.0;
-    } else if (preset === 'cinematic') {
-      this.camState.desiredTarget.set(0, 0.6, 0);
-      this.camState.desiredAzimuth = 0.65;
-      this.camState.desiredPolar = 1.06;
-      this.camState.desiredDistance = 19.5;
-    } else if (preset === 'follow' && activePlayer) {
-      this.followPlayerId = activePlayer.id;
-      this.camState.desiredPolar = 0.78;
-      this.camState.desiredDistance = 14.5;
+    const views = {
+      overview: { polar: 0.82, distance: 32 },
+      top: { polar: 0.14, distance: 25.0 },
+      cinematic: { polar: 1.06, distance: 19.5 },
+      follow: { polar: 0.78, distance: 14.5 },
+    };
+    const view = views[preset];
+    if (!view || (preset === 'follow' && !activePlayer)) return;
+
+    const cam = this.camState;
+    this.cameraPreset = preset;
+    this.cameraSubjectId = activePlayer ? activePlayer.id : null;
+    this.followPlayerId = preset === 'follow' ? activePlayer.id : null;
+    cam.desiredPolar = view.polar;
+    cam.desiredDistance = view.distance;
+    if (preset !== 'follow') cam.desiredTarget.set(0, 0, 0);
+
+    const tile = activePlayer
+      ? (this.tokenTiles[activePlayer.id] ?? activePlayer.position)
+      : 0;
+    this.cameraSector = this.getAngleKey(tile || 0);
+    this.applySectorAngle(this.cameraSector);
+  }
+
+  getAngleKey(tileIndex) {
+    return this.cameraPreset === 'top'
+      ? getSideIndex(tileIndex)
+      : getEdgeSector(tileIndex);
+  }
+
+  applySectorAngle(sector) {
+    const cam = this.camState;
+    const isCinematic = this.cameraPreset === 'cinematic';
+    const goal =
+      this.cameraPreset === 'top'
+        ? getSideAzimuth(sector)
+        : getSectorAzimuth(sector) + (isCinematic ? 0.3 : 0);
+    const turn = Math.PI * 2;
+    // Shortest rotation.
+    cam.desiredAzimuth =
+      goal + turn * Math.round((cam.desiredAzimuth - goal) / turn);
+    if (isCinematic) {
+      const [cx, cz] = CORNER_POSITIONS[sector];
+      cam.desiredTarget.set(cx * 0.3, 0.6, cz * 0.3);
     }
+  }
+
+  stopAutoCamera() {
+    this.cameraPreset = null;
+    this.followPlayerId = null;
   }
 
   focusTile(tileIndex) {
@@ -1622,48 +1706,95 @@ class BoardRenderer3D {
   bindControls() {
     const dom = this.renderer.domElement;
 
+    const cam = this.camState;
+
+    dom.addEventListener('contextmenu', (e) => e.preventDefault());
+
     dom.addEventListener('pointerdown', (e) => {
-      this.camState.isDragging = true;
-      this.camState.dragMoved = false;
-      this.camState.lastX = e.clientX;
-      this.camState.lastY = e.clientY;
+      cam.isDragging = true;
+      cam.dragMode = e.button !== 0 || e.shiftKey ? 'pan' : 'orbit';
+      cam.dragMoved = false;
+      cam.dragDistance = 0;
+      cam.lastX = e.clientX;
+      cam.lastY = e.clientY;
     });
 
     window.addEventListener('pointermove', (e) => {
-      if (!this.camState.isDragging) return;
-      const dx = e.clientX - this.camState.lastX;
-      const dy = e.clientY - this.camState.lastY;
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-        this.camState.dragMoved = true;
-        this.followPlayerId = null;
+      if (!cam.isDragging) return;
+      const dx = e.clientX - cam.lastX;
+      const dy = e.clientY - cam.lastY;
+      cam.lastX = e.clientX;
+      cam.lastY = e.clientY;
+      cam.dragDistance += Math.abs(dx) + Math.abs(dy);
+      if (cam.dragDistance > 6) {
+        cam.dragMoved = true;
+        this.stopAutoCamera();
       }
-      this.camState.lastX = e.clientX;
-      this.camState.lastY = e.clientY;
 
-      this.camState.desiredAzimuth -= dx * 0.0065;
-      this.camState.desiredPolar = Math.max(
-        0.14,
-        Math.min(1.28, this.camState.desiredPolar - dy * 0.0055),
-      );
+      if (cam.dragMode === 'pan') {
+        const k = cam.distance * 0.0016;
+        this.panCamera(-dx * k, dy * k, 0);
+      } else {
+        cam.desiredAzimuth -= dx * 0.0065;
+        cam.desiredPolar = this.clampTo(
+          cam.desiredPolar - dy * 0.0055,
+          CAMERA_LIMITS.polar,
+        );
+      }
     });
 
     window.addEventListener('pointerup', (e) => {
-      if (this.camState.isDragging && !this.camState.dragMoved) {
+      if (cam.isDragging && !cam.dragMoved && cam.dragMode === 'orbit') {
         this.handleCanvasClick(e);
       }
-      this.camState.isDragging = false;
+      cam.isDragging = false;
     });
 
     dom.addEventListener(
       'wheel',
       (e) => {
         e.preventDefault();
-        this.camState.desiredDistance = Math.max(
-          10.5,
-          Math.min(34, this.camState.desiredDistance + e.deltaY * 0.012),
+        cam.desiredDistance = this.clampTo(
+          cam.desiredDistance + e.deltaY * 0.012,
+          CAMERA_LIMITS.distance,
         );
       },
       { passive: false },
+    );
+
+    window.addEventListener('keydown', (e) => {
+      if (!CAMERA_PAN_KEYS[e.code] || this.isTypingTarget(e.target)) return;
+      if (e.code.startsWith('Arrow')) e.preventDefault();
+      this.panKeys.add(e.code);
+    });
+    window.addEventListener('keyup', (e) => this.panKeys.delete(e.code));
+    window.addEventListener('blur', () => this.panKeys.clear());
+  }
+
+  isTypingTarget(el) {
+    return Boolean(el && ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName));
+  }
+
+  clampTo(value, [min, max]) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  panCamera(right, forward, up) {
+    const az = this.camState.azimuth;
+    const t = this.camState.desiredTarget;
+    this.stopAutoCamera();
+    t.x += Math.cos(az) * right - Math.sin(az) * forward;
+    t.z += -Math.sin(az) * right - Math.cos(az) * forward;
+    t.y += up;
+    this.clampCameraTarget();
+  }
+
+  clampCameraTarget() {
+    const t = this.camState.desiredTarget;
+    t.set(
+      this.clampTo(t.x, CAMERA_LIMITS.x),
+      this.clampTo(t.y, CAMERA_LIMITS.y),
+      this.clampTo(t.z, CAMERA_LIMITS.z),
     );
   }
 
@@ -1731,14 +1862,38 @@ class BoardRenderer3D {
       }
     }
 
+    if (this.cameraPreset && this.cameraSubjectId) {
+      const tile = this.tokenTiles[this.cameraSubjectId];
+      const sector = tile === undefined ? null : this.getAngleKey(tile);
+      if (sector !== null && sector !== this.cameraSector) {
+        this.cameraSector = sector;
+        this.applySectorAngle(sector);
+      }
+    }
+
     // Follow active player if toggled
     if (this.followPlayerId && this.tokenMeshes[this.followPlayerId]) {
       const pos = this.tokenMeshes[this.followPlayerId].position;
       this.camState.desiredTarget.set(pos.x * 0.65, 0, pos.z * 0.65);
     }
 
+    if (this.panKeys.size > 0) {
+      const speed = this.camState.distance * 0.9 * dt;
+      let right = 0;
+      let forward = 0;
+      let up = 0;
+      this.panKeys.forEach((code) => {
+        const [r, f, u] = CAMERA_PAN_KEYS[code];
+        right += r;
+        forward += f;
+        up += u;
+      });
+      this.panCamera(right * speed, forward * speed, up * speed * 0.4);
+    }
+    this.clampCameraTarget();
+
     // Smooth camera interpolation
-    const lerp = 1 - Math.pow(0.001, dt);
+    const lerp = 1 - Math.pow(0.001, dt * this.speedMultiplier);
     this.camState.target.lerp(this.camState.desiredTarget, lerp);
     this.camState.azimuth +=
       (this.camState.desiredAzimuth - this.camState.azimuth) * lerp;
